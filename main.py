@@ -36,6 +36,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from config import *
 from mapping import *
+from labels import *
 
 # ============================================================
 # PROJECT RESOURCES
@@ -311,7 +312,7 @@ def main():
     ndvi_tif_name = f"{PRODUCT}_{window_text}.tif"
 
     
-    NDVI_TIF_OUTPUT = os.path.join(ndvi_year_folder, ndvi_tif_name)
+    NDVI_TIF_OUTPUT = OUTPUT_RASTER / ndvi_tif_name
 
     
     # CHECK IF TIFF EXISTS
@@ -353,11 +354,6 @@ def main():
     multi_output_dir = OUTPUT_MAPS
 
     date_range_text = format_date_range(start_date, end_date)
-    
-    if SHOW_DATE_RANGE:
-        title_text = f"{MAP_TITLE}\n({date_range_text})"
-    else:
-        title_text = MAP_TITLE
 
     fm.fontManager.addfont(font_path)
 
@@ -406,21 +402,54 @@ def main():
 
         return src, arr, tmp_path
 
-    def resample_mask(mask_src, mask_arr, target_src):
+    def resample_raster(
+        source_src,
+        source_array,
+        target_transform,
+        target_shape,
+        target_crs,
+        resampling=Resampling.nearest,
+    ):
         """
-        Resample the agricultural mask to match the NDVI raster resolution.
+        Resample a raster array to match the target raster grid.
+
+        Parameters
+        ----------
+        source_src : rasterio.DatasetReader
+            Source raster dataset.
+        source_array : ndarray
+            Raster values to resample.
+        target_transform : Affine
+            Transform of the target raster.
+        target_shape : tuple
+            (height, width) of the target raster.
+        target_crs : CRS
+            Coordinate reference system of the target raster.
+        resampling : rasterio.warp.Resampling, optional
+            Resampling method (default: nearest).
+
+        Returns
+        -------
+        ndarray
+            Raster aligned with the target raster.
+
+        Example
+        -------
+        Resample an agricultural mask to match a MODIS NDVI raster.
         """
-        dst = np.zeros((target_src.height, target_src.width), dtype="float32")
+
+        dst = np.zeros(target_shape, dtype=source_array.dtype)
 
         reproject(
-            source=mask_arr,
+            source=source_array,
             destination=dst,
-            src_transform=mask_src.transform,
-            src_crs=mask_src.crs,
-            dst_transform=target_src.transform,
-            dst_crs=target_src.crs,
-            resampling=Resampling.nearest
+            src_transform=source_src.transform,
+            src_crs=source_src.crs,
+            dst_transform=target_transform,
+            dst_crs=target_crs,
+            resampling=resampling,
         )
+
         return dst
 
     def autoscale_modis(ndvi):
@@ -449,7 +478,6 @@ def main():
 
     ndvi_tif_name = f"{PRODUCT}_{window_text}.tif"
 
-    NDVI_TIF_OUTPUT = OUTPUT_RASTER / ndvi_tif_name
 
     if not use_local_file:
         print("💾 Saving NDVI TIFF...")
@@ -482,7 +510,13 @@ def main():
         (mask_src.height != ndvi_src.height) or \
         (mask_src.transform != ndvi_src.transform):
             print("Resampling AgriMask to NDVI resolution...")
-            mask = resample_mask(mask_src, mask_raw, ndvi_src)
+            mask = resample_raster(
+                mask_src,
+                mask_raw,
+                ndvi_src.transform,
+                (ndvi_src.height, ndvi_src.width),
+                ndvi_src.crs,
+            )
         else:
             mask = mask_raw
 
@@ -553,12 +587,17 @@ def main():
     # STEP 5 — PLOT
     print("Plotting map...")
 
-    fig = plt.figure(FIGURE_SIZE)
+    fig = plt.figure(figsize=FIGURE_SIZE)
     ax = plt.axes(projection=ccrs.PlateCarree())
 
     # Extent
     minx, miny, maxx, maxy = states.total_bounds
-    ax.set_extent([minx - .5, maxx + .5, miny - 1, maxy + .5])
+    ax.set_extent([
+        minx - MAP_PADDING["left"],
+        maxx + MAP_PADDING["right"],
+        miny - MAP_PADDING["bottom"],
+        maxy + MAP_PADDING["top"],
+    ])
 
     # Layout frame
     fig_w, fig_h = fig.get_size_inches()
@@ -587,313 +626,328 @@ def main():
 
 
     # State Labels 
-    india_proj = india.to_crs(epsg=3857)
-    india["centroid"] = india_proj.centroid.to_crs(epsg=4326)
+    if SHOW_STATE_LABELS:
+        india_proj = india.to_crs(epsg=3857)
+        india["centroid"] = india_proj.centroid.to_crs(epsg=4326)
 
-    # Manual wrapping for selected states only
-    manual_wrap = {
-        "Andhra Pradesh": "Andhra\nPradesh",
-        "Jammu & Kashmir": "Jammu &\nKashmir",
-        "Dadra & Nagar Haveli": "Dadra &\nNagar \nHaveli",
-        "Himachal Pradesh": "Himachal\nPradesh",
-        "Andaman & Nicobar Islands": "Andaman &\nNicobar Islands",
-        "West Bengal": "West\nBengal"
-    }
+        # Manual wrapping for selected states only
+        state_label_wrap = {
+            "Andhra Pradesh": "Andhra\nPradesh",
+            "Jammu & Kashmir": "Jammu &\nKashmir",
+            "Dadra & Nagar Haveli": "Dadra &\nNagar \nHaveli",
+            "Himachal Pradesh": "Himachal\nPradesh",
+            "Andaman & Nicobar Islands": "Andaman &\nNicobar Islands",
+            "West Bengal": "West\nBengal"
+        }
 
-    # Manual offsets for fine adjustment (lon, lat)
-    offsets = {
-        "Kerala": (0.6, -0.5),
-        "Tripura": (0, 0.1),
-        "Mizoram":(0,-0.6),
-        "Manipur": (0.4, 0),
-        "Meghalaya":(0,-0.1),
-        "Arunachal Pradesh": (0.2,0.2),
-        "Andhra Pradesh": (-1.3,-0.9),
-        "Karnataka": (-0.55,-0.3),
-        "Jharkhand":(-0.2,0.2),
-        "West Bengal": (-0.3,-0.8),
-        "Assam":(-1,0),
-        "Nagaland": (0,-0.2),
-        "Punjab": (-0.6,-0.6),
-        "Haryana": (0,0.1),
-        "Nagaland": (0, 0),
-        "Dadra & Nagar Haveli": (0.5, -0.3),
-        "Andaman & Nicobar Islands": (0.8, -1.8),
-        "Daman & Diu": (-1.2,0),
-        
-        
-    }
+        # Manual offsets for fine adjustment (lon, lat)
+        state_label_offsets = {
+            "Kerala": (0.6, -0.5),
+            "Tripura": (0, 0.1),
+            "Mizoram":(0,-0.6),
+            "Manipur": (0.4, 0),
+            "Meghalaya":(0,-0.1),
+            "Arunachal Pradesh": (0.2,0.2),
+            "Andhra Pradesh": (-1.3,-0.9),
+            "Karnataka": (-0.55,-0.3),
+            "Jharkhand":(-0.2,0.2),
+            "West Bengal": (-0.3,-0.8),
+            "Assam":(-1,0),
+            "Nagaland": (0,-0.2),
+            "Punjab": (-0.6,-0.6),
+            "Haryana": (0,0.1),
+            "Nagaland": (0, 0),
+            "Dadra & Nagar Haveli": (0.5, -0.3),
+            "Andaman & Nicobar Islands": (0.8, -1.8),
+            "Daman & Diu": (-1.2,0),
+            
+            
+        }
 
-    # Loop through states and add labels
-    for _, row in india.iterrows():
-        stname = str(row["stname_lab"])
-        x, y = row["centroid"].x, row["centroid"].y
+        # Loop through states and add labels
+        for _, row in india.iterrows():
+            stname = str(row["stname_lab"])
+            x, y = row["centroid"].x, row["centroid"].y
 
-        # Apply manual offset if available
-        if stname in offsets:
-            dx, dy = offsets[stname]
-            x += dx
-            y += dy
+            # Apply manual offset if available
+            if stname in state_label_offsets:
+                dx, dy = state_label_offsets[stname]
+                x += dx
+                y += dy
 
-        # Apply manual wrapping if needed
-        label_text = manual_wrap.get(stname, stname)
+            # Apply manual wrapping if needed
+            label_text = state_label_wrap.get(stname, stname)
 
-        # Add text to map
-        ax.text(
-            x, y, label_text,
-            ha="center", va="center",
-            fontsize=6, fontname="Arial", weight="bold",
-            color="black", zorder=5,
-            path_effects=[path_effects.withStroke(linewidth=3, foreground="white")],
-            transform=ccrs.PlateCarree()
-        )
+            # Add text to map
+            ax.text(
+                x, y, label_text,
+                ha="center", va="center",
+                fontsize=6, fontname="Arial", weight="bold",
+                color="black", zorder=5,
+                path_effects=[path_effects.withStroke(linewidth=3, foreground="white")],
+                transform=ccrs.PlateCarree()
+            )
 
 
     # Grid + ticks
-    lon_ticks = list(range(int(minx)-1, int(maxx)+2, 5))
-    lat_ticks = list(range(int(miny)-1, int(maxy)+2, 5))
+    if SHOW_GRID:
 
-    ax.set_xticks(lon_ticks, crs=ccrs.PlateCarree())
-    ax.set_yticks(lat_ticks, crs=ccrs.PlateCarree())
-    ax.xaxis.set_major_formatter(cticker.LongitudeFormatter())
-    ax.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+        # Grid + ticks
+        lon_ticks = list(range(int(minx)-1, int(maxx)+2, GRID_INTERVAL))
+        lat_ticks = list(range(int(miny)-1, int(maxy)+2, GRID_INTERVAL))
 
-    ax.tick_params(labelsize=9, top=True, bottom=True, left=True, right=True,
-                labeltop=True, labelbottom=True, labelleft=True, labelright=True)
+        ax.set_xticks(lon_ticks, crs=ccrs.PlateCarree())
+        ax.set_yticks(lat_ticks, crs=ccrs.PlateCarree())
 
-    # rotate y labels
-    for lbl in ax.get_yticklabels():
-        lbl.set_rotation(90)
+        ax.xaxis.set_major_formatter(cticker.LongitudeFormatter())
+        ax.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+
+        ax.tick_params(
+            labelsize=GRID_LABEL_SIZE,
+            top=True,
+            bottom=True,
+            left=True,
+            right=True,
+            labeltop=True,
+            labelbottom=True,
+            labelleft=True,
+            labelright=True
+        )
+
+        # Rotate latitude labels
+        for lbl in ax.get_yticklabels():
+            lbl.set_rotation(90)
 
 
     # Title
-    ax.text(maxx - 8, maxy, title_text,
-            ha="center", va="top",
-            fontsize=13, weight="bold",
-            transform=ccrs.PlateCarree())
+    if SHOW_DATE_RANGE:
+        title_text = f"{MAP_TITLE}\n({date_range_text})"
+    else:
+        title_text = MAP_TITLE
 
-    
-    # North arrow
-    x, y = 0.05, 0.92
-    ax.text(x, y + 0.04, 'N', ha='center', va='top',
-            fontsize=9, fontname='Arial', color='black', transform=ax.transAxes)
-    ax.text(x, y, '⮝', ha='center', va='center',
-            fontsize=24, fontname='Noto Sans Symbols 2', color='black', transform=ax.transAxes)
+    ax.text(
+        maxx - TITLE_X_OFFSET,
+        maxy,
+        title_text,
+        ha="center",
+        va="top",
+        fontsize=13,
+        weight="bold",
+        transform=ccrs.PlateCarree()
+    )
+
+    #North Arrow
+    if SHOW_NORTH_ARROW:
+        x, y = NORTH_ARROW_POSITION
+
+        ax.text(
+            x, y + 0.04, "N",
+            ha="center", va="top",
+            fontsize=9,
+            fontname="Arial",
+            color="black",
+            transform=ax.transAxes
+        )
+
+        ax.text(
+            x, y, "⮝",
+            ha="center", va="center",
+            fontsize=24,
+            fontname="Noto Sans Symbols 2",
+            color="black",
+            transform=ax.transAxes
+        )
 
     
     # Scale bar
-    base_lat = 5.5
-    mean_lat = (miny + maxy) / 2
-    km_per_deg = 111.32 * math.cos(math.radians(mean_lat))
+    if SHOW_SCALE_BAR:
+        base_lat = SCALE_BAR_BASE_LAT
+        mean_lat = (miny + maxy) / 2
+        km_per_deg = 111.32 * math.cos(math.radians(mean_lat))
 
-    marks_km = [0, 130, 260, 520, 780, 1040]
-    marks_deg = [km/km_per_deg for km in marks_km]
+        marks_km = SCALE_BAR_MARKS
+        marks_deg = [km/km_per_deg for km in marks_km]
 
-    total_deg = marks_deg[-1]
-    center_lon = 82
-    left_lon = center_lon - total_deg/2
+        total_deg = marks_deg[-1]
+        center_lon = SCALE_BAR_CENTER_LON
+        left_lon = center_lon - total_deg/2
 
-    for i in range(len(marks_km)-1):
-        x0 = left_lon + sum((marks_km[j+1]-marks_km[j])/km_per_deg for j in range(i))
-        width = (marks_km[i+1]-marks_km[i]) / km_per_deg
-        color = "black" if i % 2 == 0 else "white"
+        for i in range(len(marks_km)-1):
+            x0 = left_lon + sum((marks_km[j+1]-marks_km[j])/km_per_deg for j in range(i))
+            width = (marks_km[i+1]-marks_km[i]) / km_per_deg
+            color = "black" if i % 2 == 0 else "white"
 
-        ax.add_patch(Rectangle(
-            (x0, base_lat),
-            width, 0.25,
-            facecolor=color, edgecolor="black",
-            transform=ccrs.PlateCarree(), zorder=8
-        ))
+            ax.add_patch(Rectangle(
+                (x0, base_lat),
+                width, 0.25,
+                facecolor=color, edgecolor="black",
+                transform=ccrs.PlateCarree(), zorder=8
+            ))
 
-    for i, km in enumerate(marks_km):
-        ax.text(left_lon + marks_deg[i], base_lat+0.35, f"{km}",
-                fontsize=6, transform=ccrs.PlateCarree())
+        for i, km in enumerate(marks_km):
+            ax.text(left_lon + marks_deg[i], base_lat+0.35, f"{km}",
+                    fontsize=6, transform=ccrs.PlateCarree())
 
-    ax.text(left_lon + total_deg + 0.3, base_lat + 0.1, "Km",
-            ha="left", va="center", fontsize=6.2, fontname="Arial", transform=ccrs.PlateCarree())
+        ax.text(left_lon + total_deg + 0.3, base_lat + 0.1, "Km",
+                ha="left", va="center", fontsize=6.2, fontname="Arial", transform=ccrs.PlateCarree())
 
+
+#FROM HERE TOMORROW I HAVE TO CONTINUE CLEANING 
 
     # Source
-    ax.text(97.6, base_lat - 0.2, "Source: MODIS",
-            fontsize=5, style='italic',
-            transform=ccrs.PlateCarree(), ha="right")
-
+    if SHOW_SOURCE:
+        x, y_offset = SOURCE_POSITION
+        ax.text(
+            x,
+            base_lat + y_offset,
+            SOURCE_TEXT,
+            fontsize=5, 
+            style='italic',
+            transform=ccrs.PlateCarree(), 
+            ha="right")
 
     # Legend
-    patches = []
-    for idx, (_, _, label, color) in enumerate(NDVI_CLASSES):
-        patches.append(mpatches.Patch(facecolor=color, edgecolor='black',
-                                    label=f"{label}"))
 
-    leg = ax.legend(
-        handles=patches,
-        loc="lower left",
-        bbox_to_anchor=(0.435, 0.12),
-        fontsize=7.5,
-        frameon=True,            
-        handlelength=2.4,           # 🔹 wider color boxes
-        handleheight=1.6,           # 🔹 taller color boxes
-        handletextpad=0.4,          # spacing between box & text
-        labelspacing=0.5,           # space between legend rows
-        borderpad=0.4,
-        facecolor="white", 
-        edgecolor="black"
-    )
+    if SHOW_LEGEND:
+        patches = []
 
-    ax.text(0.44, 0.29, "Legend", fontsize=10, weight="bold", transform=ax.transAxes)
+        for _, _, label, color in NDVI_CLASSES:
+            patches.append(
+                mpatches.Patch(
+                    facecolor=color,
+                    edgecolor="black",
+                    label=label
+                )
+            )
 
+        leg = ax.legend(
+            handles=patches,
+            loc="lower left",
+            bbox_to_anchor=LEGEND_POSITION,
+            fontsize=7.5,
+            frameon=True,            
+            handlelength=2.4,           # wider color boxes
+            handleheight=1.6,           # taller color boxes
+            handletextpad=0.4,          # spacing between box & text
+            labelspacing=0.5,           # space between legend rows
+            borderpad=0.4,
+            facecolor="white", 
+            edgecolor="black"
+        )
+
+        legend_title_x, legend_title_y = LEGEND_TITLE_POSITION
+
+        ax.text(
+            legend_title_x,
+            legend_title_y,
+            LEGEND_TITLE,
+            fontsize=10,
+            weight="bold",
+            transform=ax.transAxes
+        )
 
     # SAVE
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    plt.savefig(output_path, dpi=FIGURE_DPI, bbox_inches='tight', pad_inches=0.1)
     plt.close()
-
-    crop_white_margins_all_sides(output_path)
 
     print(f"  ✅ NDVI MAP SAVED: {output_path}")
 
 
-    # EXPORT NDVI OBJECTS FOR STATE MAPS (NO STYLE CHANGE)
-    NDVI_SRC = ndvi_src
-    NDVI_IMG = ndvi_img
-    NDVI_MASKED_FULL = ndvi_masked
-    MASK_SRC = mask_src
-    MASK_FULL = mask
-    STATES_GDF = states
-    DISTRICTS_GDF = districts
-
-    print("✅ NDVI objects prepared for state-level maps")
-
-
-    # USE NDVI FROM INDIA PIPELINE (NO RE-READ, NO STYLE CHANGE)
-
-    ndvi_src = NDVI_SRC
-    mask_src = MASK_SRC
-    mask_full = MASK_FULL
-
-    states = STATES_GDF
-    districts = DISTRICTS_GDF
-
-    print("🧠 Using NDVI from India pipeline")
-
-
-    # Full script — state-level NDVI maps with proper agri-mask and clipped districts
-    # (Patched: integer multiples-of-5 ticks, fixed 1.5 cm margins, locked aspect)
+    # ============================================================
+    # GENERATE STATE MAPS
+    # ============================================================
+    print("Generating state-level NDVI maps by using NDVI from India pipeline")
     
+    # ---------------- TITLE  ----------------
+    if SHOW_DATE_RANGE:
+        title_text = f"{MAP_TITLE}\n({date_range_text})"
+    else:
+        title_text = MAP_TITLE
 
-    # ---------------- TITLE (ArcMap-style two-line title) ----------------
-    date_range_text = format_date_range(start_date, end_date)
-    title_sub = f"({date_range_text}, {datetime.now().year})"
-    title_text = f"Present NDVI\n({start_date} – {end_date})"
-
-    dpi = 300
-
-
-    # Add symbol font used for north arrow
-    fm.fontManager.addfont(r"F:\Automation_Working\Vasanthi\crop_health_report\data\fonts\NotoSansSymbols2-Regular.ttf")
-
-    # States to export
-    state_list = [
-        "Andhra Pradesh",
-        "Haryana",
-        "Madhya Pradesh",
-        "Rajasthan",
-        "Uttar Pradesh",
-        "Chhattisgarh",
-        "Maharashtra",
-        "Odisha",
-        "Karnataka",
-        "Tamil Nadu"
-    ]
-
-    STATE_FIXED_EXTENT = {
-        "Andhra Pradesh": [74, 87.5, 12, 20.7],
-        "Haryana": [74.2, 78.0, 27.2, 31.5],
-        "Madhya Pradesh": [74, 82.9, 20.5, 27.3],
-        "Rajasthan": [69, 78.5, 22.8, 32],
-        "Uttar Pradesh": [77, 84.5, 23.0, 31.3],
-        "Chhattisgarh": [78, 86, 17, 25.5],
-        "Maharashtra": [73, 80.57, 15, 23.5],
-        "Odisha": [81, 87.7, 18, 22.5],
-        "Karnataka": [72, 79.0, 11.0, 19],
-        "Tamil Nadu": [75, 81, 7, 14.5]
-
-    }
 
 
     # ---------------------- helper functions ----------------------
-    def safe_filename(s):
-        s = unicodedata.normalize("NFKD", s)
-        s = "".join(ch for ch in s if ch.isalnum() or ch in (" ", "_", "-")).rstrip()
-        return s.replace(" ", "_")
+    def safe_filename(name):
+        """
+        Convert a string into a filename-safe format.
 
-    def read_raster(path):
-        src = rasterio.open(path)
-        arr = src.read(1).astype("float32")
-        return src, arr
-
-    def resample_mask_states(mask_src, mask_arr, target_transform, target_shape, target_crs):
-        """Reproject/resample a mask array (2D) into the target grid defined by transform/shape/crs."""
-        dst = np.zeros(target_shape, dtype="float32")
-        reproject(
-            source=mask_arr,
-            destination=dst,
-            src_transform=mask_src.transform,
-            src_crs=mask_src.crs,
-            dst_transform=target_transform,
-            dst_crs=target_crs,
-            resampling=Resampling.nearest
-        )
-        return dst
+        Example
+        -------
+        Input : "Andhra Pradesh"
+        Output: "Andhra_Pradesh"
+        """
+        name = unicodedata.normalize("NFKD", name)
+        name = "".join(ch for ch in name if ch.isalnum() or ch in (" ", "_", "-")).rstrip()
+        return name.replace(" ", "_")
 
 
-    def build_class_image_from_arrays(ndvi_arr, classes):
-        ndvi_arr = ndvi_arr.astype(np.float32)
-        h, w = ndvi_arr.shape
+    def create_classified_image(ndvi_array, classes):
+        """
+        Convert an NDVI array into a classified RGBA image.
+
+        Parameters
+        ----------
+        ndvi_array : ndarray
+            NDVI values after masking and preprocessing.
+        classes : list
+            Classification rules in the format:
+            (minimum, maximum, label, hex_color)
+
+        Returns
+        -------
+        rgba_image : ndarray
+            RGBA image used for plotting.
+        class_map : ndarray
+            Integer class index for each pixel.
+
+        Example
+        -------
+        NDVI = 0.72
+            → Moderate Excess
+            → #32CD32
+        """
+        ndvi_array = ndvi_array.astype(np.float32)
+        h, w = ndvi_array.shape
 
         class_map = np.full((h, w), -1, dtype=np.int16)
-        for idx, (lo, hi, label, hexcolor) in enumerate(classes):
-            sel = (ndvi_arr >= lo) & (ndvi_arr <= hi)
+        for idx, (lo, hi, _, hexcolor) in enumerate(classes):
+            sel = (ndvi_array >= lo) & (ndvi_array <= hi)
             class_map[sel] = idx
 
-        outimg = np.zeros((h, w, 4), dtype=np.uint8)
-        outimg[..., 3] = 0
-        for idx, (_, _, label, hexcolor) in enumerate(classes):
+        rgba_image = np.zeros((h, w, 4), dtype=np.uint8)
+        rgba_image[..., 3] = 0
+        for idx, (_, _, _, hexcolor) in enumerate(classes):
             r = int(hexcolor[1:3], 16)
             g = int(hexcolor[3:5], 16)
             b = int(hexcolor[5:7], 16)
-            mask_idx = class_map == idx
-            outimg[mask_idx, 0] = r
-            outimg[mask_idx, 1] = g
-            outimg[mask_idx, 2] = b
-            outimg[mask_idx, 3] = 255
-        return outimg, class_map
+            class_pixels = class_map == idx
+            rgba_image[class_pixels, 0] = r
+            rgba_image[class_pixels, 1] = g
+            rgba_image[class_pixels, 2] = b
+            rgba_image[class_pixels, 3] = 255
+        return rgba_image, class_map
 
 
-    # ---------------------- Read raster + vectors ----------------------
-    print("Reading NDVI and AgriMask...")
+    # ============================================================
+    # PREPARE DATA FOR STATE MAPS
+    # ============================================================
+    print("Preparing data for state-level maps...")
 
-    mask_bin_full = np.where(mask_full > 0, 1, 0)
-
-    # Use NDVI prepared in India pipeline 
-    ndvi_masked_full = NDVI_MASKED_FULL
-
-
-    # read vectors
-    states = STATES_GDF
-    india = STATES_GDF
-    districts = DISTRICTS_GDF
-
-
-    # compute simple centroid column (for state labels)
+    # Compute state centroids for label placement
     states_proj = states.to_crs(3857)
     states["centroid"] = states_proj.centroid.to_crs(4326)
 
     # ---------------------- State map generator ----------------------
-    def make_state_map(stname, save_dir, title_text=None, dpi=300, figsize=(8,8.5)):
+    def make_state_map(
+        stname,
+        save_dir,
+        #title_text=None,
+        dpi=FIGURE_DPI,
+        figsize=FIGURE_SIZE,
+    ):
         print(f"\nGenerating map for: {stname}")
 
-        # find state
+        # Find the selected state boundary
         st_row = states[states['stname_lab'].str.lower() == stname.lower()]
         if st_row.empty:
             st_row = states[states['stname_lab'].str.contains(stname.split()[0], case=False, na=False)]
@@ -905,7 +959,7 @@ def main():
         state_geom = st_row.geometry.union_all()
 
 
-        # crop NDVI
+        # Clip NDVI raster to the selected state
         ndvi_crop, ndvi_transform = rio_mask(
             ndvi_src,
             [geom],
@@ -921,7 +975,7 @@ def main():
         ndvi_crop = autoscale_modis(ndvi_crop)
 
 
-        # crop mask
+        # Clip agricultural mask to the selected state
         try:
             mask_crop_raw, mask_transform = rio_mask(mask_src, [geom], crop=True, filled=True, invert=False)
             mask_crop = mask_crop_raw[0].astype(np.float32)
@@ -939,7 +993,7 @@ def main():
                     resampling=Resampling.nearest
                 )
                 mask_crop = dst
-        except:
+        except Exception:
             out_shape = ndvi_crop.shape
             geom_mask = geometry_mask([geom], transform=ndvi_transform, invert=True, out_shape=out_shape)
             mask_crop = geom_mask.astype(np.uint8)
@@ -947,25 +1001,23 @@ def main():
         mask_state = np.where(mask_crop > 0, 1, 0)
         ndvi_masked = np.where(mask_state == 1, ndvi_crop, np.nan)
 
-        # build class image
-        ndvi_img_state, class_map_state = build_class_image_from_arrays(
+        # Create the classified NDVI image
+        ndvi_img_state, class_map_state = create_classified_image(
             ndvi_masked,
             NDVI_CLASSES
         )
 
 
-        # -----------------------   PLOTTING SECTION   ------------------------
+        # ============================================================
+        # PLOT STATE MAP
+        # ============================================================
         fig = plt.figure(figsize=figsize)
         ax = plt.axes(projection=ccrs.PlateCarree())
 
-        
-        #  FIXED EXTENT — DO NOT APPLY ANY DEGREE MARGINS
-        minx, miny, maxx, maxy = st_row.total_bounds
 
-
-        # Add 0.5 cm gap around extent
-        if stname in STATE_FIXED_EXTENT:
-            xmin, xmax, ymin, ymax = STATE_FIXED_EXTENT[stname]
+        # Set map extent
+        if stname in REGION_EXTENTS :
+            xmin, xmax, ymin, ymax = REGION_EXTENTS [stname]
         else:
             b = st_row.to_crs(4326).total_bounds
             xmin, xmax, ymin, ymax = b[0]-0.2, b[2]+0.2, b[1]-0.2, b[3]+0.2
@@ -973,14 +1025,14 @@ def main():
         ax.set_extent([xmin, xmax, ymin, ymax], crs=ccrs.PlateCarree())
 
         
-        #  FIXED 1.5 CM PHYSICAL MARGIN AROUND THE AXES FRAME
-        FIG_W, FIG_H = figsize      # inches
-        MARGIN_IN = 1.5 / 2.54      # convert 1.5 cm to inches
+        # Set a fixed 1.5 cm margin around the map frame
+        fig_width, fig_height = figsize
+        margin_inches = 1.5 / 2.54
 
-        left   = MARGIN_IN / FIG_W
-        right  = 1 - MARGIN_IN / FIG_W
-        bottom = MARGIN_IN / FIG_H
-        top    = 1 - MARGIN_IN / FIG_H
+        left = margin_inches / fig_width
+        right = 1 - margin_inches / fig_width
+        bottom = margin_inches / fig_height
+        top = 1 - margin_inches / fig_height
 
         # set aspect lock to avoid cartopy stretching later
         ax.set_adjustable('datalim')
@@ -991,14 +1043,14 @@ def main():
 
         
         # DRAW NDVI IMAGE (compute extent from ndvi_transform safely)
-        t = ndvi_transform
+        transform = ndvi_transform
 
-        # Rasterio transform components:
+       # Extract raster bounds from the affine transform
         # t[0] = a (pixel width), t[4] = e (pixel height, usually negative), t[2] = c (x origin), t[5] = f (y origin)
-        left_px = t[2]
-        top_px = t[5]
-        px_w = t[0]
-        px_h = t[4]
+        left_px = transform[2]
+        top_px = transform[5]
+        px_w = transform[0]
+        px_h = transform[4]
 
 
         # compute right and bottom correctly (bottom may be < top if px_h negative)
@@ -1014,23 +1066,24 @@ def main():
             top_px
         )
 
-        print("AXES EXTENT:", xmin, xmax, ymin, ymax)
-        print("RASTER EXTENT:", extent)
+        # Debug: compare map and raster extents
+        # print("AXES EXTENT:", xmin, xmax, ymin, ymax)
+        # print("RASTER EXTENT:", extent)
 
 
         ax.imshow(ndvi_img_state, extent=extent, origin="upper",
                 transform=ccrs.PlateCarree(), zorder=2)
 
-        # prevent cartopy from autoscaling the axes area after imshow
+        # Keep the manually defined map extent
         ax.autoscale(False)
 
         # reapply the axes position (Cartopy may have changed it)
         ax.set_position([left, bottom, right-left, top-bottom])
 
 
-        # GRID TICKS — multiples of 5 only (integers)    
-        lon_ticks = list(range(int(xmin), int(xmax) + 1, 5))
-        lat_ticks = list(range(int(ymin), int(ymax) + 1, 5))
+        # Grid lines and coordinate labels 
+        lon_ticks = list(range(int(xmin), int(xmax) + 1, GRID_INTERVAL))
+        lat_ticks = list(range(int(ymin), int(ymax) + 1, GRID_INTERVAL))
 
 
         ax.set_xticks(lon_ticks, crs=ccrs.PlateCarree())
@@ -1042,250 +1095,39 @@ def main():
                 labeltop=True, labelbottom=True, labelleft=True, labelright=True)
 
         # rotate y labels
-        for lbl in ax.get_yticklabels():
-            lbl.set_rotation(90)
+        for label in ax.get_yticklabels():
+            label.set_rotation(90)
 
 
-        # DISTRICT BOUNDARIES + LABELS
-
-        # Define manual wrap and shift inside the function
-        manual_wrap_dt = {
-            #Chhattisgarh
-            "Uttar Bastar Kanker" : "Uttar\nBastar\nKanker",  
-            "Dakshin Bastar Dantewada": "Dakshin\nBastar\nDantewada",   
-            "Janjgir - Champa": "Janjgir\nChampa",
-
-            #Rajasthan
-            "Sawai Madhopur": "Sawai\nMadhopur",
-
-            #Madhya Pradesh
-            "Agar Malwa": "Agar\nMalwa",
-
-            #Uttar Pradesh
-            "Gautam Buddha Nagar":"Gautam\nBuddha\nNagar",
-            "Kanpur Dehat":"Kanpur\nDehat",
-            "Kanpur Nagar":"Kanpur\nNagar",
-            "Sant Kabir Nagar":"Sant\nKabir\nNagar",
-            "Ambedkar Nagar":"Ambedkar\nNagar",
-            "Bara Banki":"Bara\nBanki",
-
-            #Andhra Pradesh
-            "Sri Potti Sriramulu Nel": "Sri Potti\nSriramulu\nNellore",
-            "West Godavari": "West\nGodavari",
-            "East Godavari": "East\nGodavari",
-
-            #Meghalaya
-            "South West Garo Hills": "South West\nGaro Hills",
-            "South West Khasi Hills":"South West\nKhasi Hills",
-            "West Garo Hills": "West Garo\nHills",
-
-            #Karnataka
-            "Uttara Kannada": "Uttara\nKannada",
-            "Dakshina Kannada":"Dakshina\nKannada",
-            "Bengaluru Rural": "Bengaluru\nRural",
-
-            #Maharashtra 
-            "Mumbai Suburban": "Mumbai\nSuburban",
-
-            #Chhattisgarh 
-            "Uttar Bastar Kanker": "Uttar\nBastar\nKanker",
-            "Dakshin Bastar Dantewada": "Dakshin\nBastar\nDantewada"
-        }
-
-        manual_shift_dt = {
-            #Jammu and Kashmir
-            "Muzaffarabad": (0,-0.2),
-
-            #Haryana
-            "Yamunanagar": (-0.15,0),
-            "Kurukshetra": (0,-0.05),
-            "Gurugram": (0,0.05),
-            "Faridabad": (-0.05,0),
-            "Mahendragarh" : (0.15,0.2),
-
-            #Madhya Pradesh 
-            "Neemuch": (0,-0.1),
-            "Niwari": (0.17,-0.15),
-            "Alirajpur": (0.09,-0.02),
-            "Burhanpur": (0,0.1),
-            "Tikamgarh": (0.03,0.05),
-            "Anuppur": (0.15,-0.1),
-            "Ratlam": (0,-0.08),
-            "Shahdol": (0.22,-0.3),
-            "Agar Malwa": (0.1,-0.15),
-            "Datia": (-0.02,-0.05),
-            "Sehore": (0,-0.1),
-
-            
-            #Chhattisgarh
-            "Balrampur": (-0.17,0),
-            "Raigarh":(-0.05,0.1),
-            "Raipur":(0,0.1),
-            "Koriya":(0,0.2),
-            "Bilaspur": (0.2,-0.2),
-            "Mungeli" :(0.15,0.2),
-            "Kabeerdham" :(0.1,-0.2),
-            "Mahasamund": (0,0.05),
-            "Rajnandgaon": (0.2,0.05),
-            "Uttar Bastar Kanker":(0,0),
-            "Gariaband":(-0.2,-0.05),
-            "Kondagaon":(-0.1,0.05),
-            "Narayanpur":(0.15,0),
-            "Dakshin Bastar Dantewada":(0,0),
-            "Sukma":(-0.05,-0.2),
-
-            #Rajasthan
-            "Ganganagar":(0.2,0.1),
-            "Hanumangarh":(0,-0.2),
-            "Churu":(0,0.2),
-            "Bharatpur":(-0.2,0),
-            "Dhaulpur":(-0.13,0),
-            "Karauli":(-0.1,-0.2),
-            "Sawai Madhopur":(0,0),
-            "Baran": (0,0.25),
-            "Jhalawar":(-0.2,0.15),
-            "Banswara":(-0.1,0.08),
-            "Dungarpur":(0.1,0.15),
-            "Pratapgarh":(-0.17,0),
-            "Chittaurgarh":(-0.1,0),
-            "Tonk":(0,0.05),
-
-            #Uttar Pradesh
-            "Saharanpur":(0,-0.2),
-            "Shamli":(0.1,-0.1),
-            "Muzaffarnagar":(0.15,0.1),
-            "Baghpat":(0.2,0.1),
-            "Moradabad":(0,0.1),
-            "Gautam Buddha Nagar":(0.4,-0.15),
-            "Ghaziabad":(0.2,0.05),
-            "Mathura":(0.09,0.11),
-            "Mainpuri":(0,-0.1),
-            "Agra":(0.1,0),
-            "Bulandshahr":(-0.1,0.125),
-            "Hapur":(0,-0.05),
-            "Amroha":(0.13,0),
-            "Sambhal":(0.2,0),
-            "Etawah":(0,0.16),
-            "Kanpur Dehat":(0,-0.1),
-            "Amethi":(0,0.1),
-            "Firozabad":(0,0.1),
-            "Kanpur Nagar":(0.1,-0.2),
-            "Jhansi":(0.45,0.15),
-            "Lalitpur":(0.1,-0.2),
-            "Sonbhadra":(0.04,0.2),
-            "Chandauli":(-0.3,0),
-            "Varanasi":(0.2,0),
-            "Bhadohi":(-0.1,0),
-            "Prayagraj":(0,-0.06),
-            "Chitrakoot":(0,0.06),
-            "Deoria":(0.12,-0.1),
-            "Kushinagar":(0.05,-0.2),
-            "Mahrajganj":(0,-0.1),
-            "Shrawasti":(-0.1,0.1),
-            "Siddharthnagar":(-0.3,0),
-            "Gorakhpur":(0.15,-0.2),
-            "Sant Kabir Nagar":(0.1,0.07),
-            "Bahraich":(0.2,-0.3),
-            "Balrampur":(0,0.05),
-            "Mau":(0.1,0),
-            "Pratapgarh":(-0.1,-0.04),
-            "Jaunpur":(0.1,-0.1),
-            "Bara Banki":(0,0),
-            "Gonda":(0,-0.1),
-            "Sultanpur":(0,-0.1),
-            "Lucknow":(-0.05,0),
-            "Hardoi":(0,-0.1),
-            "Lucknow":(0,-0.1),
-
-            #Tamil Nadu
-            "Ramanathapuram": (-0.18, -0.2),
-            "Thoothukkudi": (-0.1,0.2),
-            "Thiruvarur": (0, 0.1),
-            "Coimbatore": (0,0.2),
-            "Karur": (-0.40, 0.1),
-            "Nagapattinam":(-0.23, -0.2),
-            "Kanniyakumari":(0.2,0),
-            "Chennai":(-0.2,0),
-            "Kancheepuram":(-0.15,0),
-            "The Nilgiris": (0.15,0),
-            "Viluppuram": (-0.05,-0.15),
-            "Puducherry":(-0.24,0),
-            "Karaikal":(-0.18,-0.03),
-
-
-            #Andhra Pradesh 
-            "East Godavari": (0,0.2),
-            "Vizianagaram":(0.2,-0.1),
-
-            #Karnataka
-            "Davanagere": (0, 0.2),
-            "Dharwad": (0,-0.1),
-            "Uttara Kannada": (0,0.15),
-            "Bhandara": (0,-0.1),
-            "Udupi":(0.05,0),
-            "Chikkaballapura":(-0.2,0),
-            "Chitradurga":(-0.1,-0.1),
-            "Kodagu":(0.1,0),
-            "Ramanagara":(-0.1,0.05),
-            "Dakshina Kannada":(0,0.1),
-            "Chamarajanagara":(-0.1,0),
-
-            #Meghalaya 
-            "West Garo Hills":(0,0.1),
-            "West Jaintia Hills":(0.06,0.1),
-
-            #Odisha
-            "Sundargarh":(0,0.1),
-            "Nuapada":(0.15,0),
-            "Nabarangapur":(0.15,0),
-            "Puri":(0.3,0.1),
-            "Jagatsinghapur":(-0.15,0.1),
-            "Baleshwar":(-0.15,0),
-            "Kendrapara":(-0.1,0),
-            "Jajapur":(-0.04,0),
-            "Balangir":(0,0.05),
-
-            #Maharashtra
-            "Gondiya":(-0.1,0.1),
-            "Mumbai": (0.3,-0.1),
-            "Mumbai Suburban": (0.28,0),
-            "Sindhudurg":(0.25,0),
-            "Nandurbar":(-0.3,0.2),
-            "Ratnagiri":(0.1,0),
-            "Raigarh":(0.1,0),
-            "Kolhapur":(-0.2,0),
-        }
-
-
-        # --- DISTRICT SELECTION (ROBUST) ---
+        # Select districts belonging to the current state
         st_geom_proj = st_row.to_crs(3857).geometry.union_all()
         districts_proj = districts.to_crs(3857)
 
-        idx = districts_proj.geometry.centroid.within(st_geom_proj)
-        state_districts = districts[idx].copy()
+        district_mask = districts_proj.geometry.centroid.within(st_geom_proj)
+        state_districts = districts[district_mask].copy()
 
-        # Plot boundaries
+        # Draw district boundaries
         state_districts.plot(ax=ax, facecolor="none",
                             edgecolor="black", linewidth=0.25, zorder=4)
 
-        # Plot labels
+        # Add district labels
         for _, drow in state_districts.iterrows():
             raw_lab = str(drow.get('dtname','') or drow.get('district_name','')).strip()
             if not raw_lab:
                 continue
 
-            lab = manual_wrap_dt.get(raw_lab, raw_lab)
+            label_text = DISTRICT_LABEL_WRAP.get(raw_lab, raw_lab)
 
-            rp = drow.geometry.representative_point()
-            final_x, final_y = rp.x, rp.y
+            label_point = drow.geometry.representative_point()
+            final_x, final_y = label_point.x, label_point.y
 
-            if raw_lab in manual_shift_dt:
-                dx, dy = manual_shift_dt[raw_lab]
+            if raw_lab in DISTRICT_LABEL_SHIFT:
+                dx, dy = DISTRICT_LABEL_SHIFT[raw_lab]
                 final_x += dx
                 final_y += dy
 
             ax.text(
-                final_x, final_y, lab,
+                final_x, final_y, label_text,
                 fontsize=8, fontweight="bold",
                 ha="center", va="center",
                 transform=ccrs.PlateCarree(),
@@ -1295,40 +1137,20 @@ def main():
                 ]
             )
 
-        ZOOM = {
-            "Chhattisgarh": 0.85,   # 85% of original size
-        }
-
-        z = ZOOM.get(stname, 1.00)
-
-
         # thicker state boundary
         st_row.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.8, zorder=5)
 
 
         # TITLE (per-state manual positioning)
-        title_main = f"Present NDVI - {stname}"
+        if SHOW_DATE_RANGE:
+            title_main = f"{MAP_TITLE} - {stname}\n{date_range_text}"
+        else:
+            title_main = f"{MAP_TITLE} - {stname}"
 
 
         # Custom positions for each state
-        TITLE_POS = {
-            "Uttar Pradesh":   (0.50, 0.965),
-            "Andhra Pradesh":  (0.50, 0.965),
-            "Karnataka":       (0.35, 0.965),
-            "Odisha":          (0.50, 0.965),
-            "Rajasthan":       (0.50, 0.965),
-            "Madhya Pradesh":  (0.50, 0.965),
-            "Chhattisgarh":    (0.50, 0.965),
-            "Maharashtra":     (0.50, 0.965),
-            "Haryana":         (0.35, 0.965),
-            "Tamil Nadu":      (0.35, 0.965)
-        }
-
         # Get position (default = center top)
-        TX, TY = TITLE_POS.get(stname, (0.50, 0.98))
-
-        # GAP between title and subtitle
-        LINE_GAP = 0.04   # change this to increase or reduce spacing
+        TX, TY = STATE_TITLE_POSITION.get(stname, (0.50, 0.98))
 
         # Main title
         ax.text(
@@ -1339,37 +1161,34 @@ def main():
             transform=ax.transAxes
         )
 
-        # Subtitle
+
+        # NORTH ARROW
+        arrow_x, arrow_y = STATE_NORTH_ARROW_POSITION
+
         ax.text(
-            TX, TY - LINE_GAP,
-            title_sub,
-            ha="center", va="top",
-            fontname="Arial", fontsize=16, weight="bold",
-            transform=ax.transAxes
+            arrow_x,
+            arrow_y + 0.025,
+            "N",
+            transform=ax.transAxes,
+            ha="center",
+            va="bottom",
+            fontsize=10,
+        )
+
+        ax.text(
+            arrow_x,
+            arrow_y,
+            "⮝",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=25,
+            fontname="Noto Sans Symbols 2",
         )
 
 
-        # NORTH ARROW
-        ax.text(0.96, 0.945, 'N', transform=ax.transAxes,
-                ha='center', va='bottom', fontsize=10)
-        ax.text(0.96, 0.92, '⮝', transform=ax.transAxes,
-                ha='center', va='center', fontsize=25,
-                fontname='Noto Sans Symbols 2')
-
-
         # SCALE BAR
-        SCALEBAR_MAXKM = {
-            "Rajasthan": 300,
-            "Madhya Pradesh": 300,
-            "Chhattisgarh": 200,
-            "Odisha": 200,
-            "Maharashtra": 280,
-            "Andhra Pradesh": 240,
-            "Uttar Pradesh": 240,
-            "Haryana": 100,
-            "Karnataka": 160,
-            "Tamil Nadu": 160
-        }
+        max_km = STATE_SCALEBAR_MAXKM.get(stname, 200)
 
         def scale_marks(max_km):
             """Return the correct AIC-style scale bar tick marks."""
@@ -1389,7 +1208,7 @@ def main():
                 return [0, max_km/4, max_km/2, 3*max_km/4, max_km]
 
         # SCALE BAR draw in axes fraction
-        max_km = SCALEBAR_MAXKM.get(stname, 200)
+        max_km = STATE_SCALEBAR_MAXKM.get(stname, 200)
         marks_km = scale_marks(max_km)
 
 
@@ -1403,73 +1222,77 @@ def main():
         left_frac = 0.30       # move left/right here (adjust 0.10–0.20)
 
 
-        # ---------- DRAW SEGMENTS -------------
-        total_km = marks_km[-1]    # max scale value
+        # ----------- Scale bar settings -----------
+
+        total_km = marks_km[-1]
 
         for i in range(len(marks_km) - 1):
             km0 = marks_km[i]
             km1 = marks_km[i + 1]
 
-            # width of this segment as fraction of bar width
-            seg_frac = (km1 - km0) / total_km * SCALEBAR_WIDTH_FRAC
-            seg_left = left_frac + (km0 / total_km) * SCALEBAR_WIDTH_FRAC
+            seg_frac = (km1 - km0) / total_km * STATE_SCALEBAR_WIDTH
+            seg_left = STATE_SCALEBAR_LEFT + (km0 / total_km) * STATE_SCALEBAR_WIDTH
 
             color = "black" if i % 2 == 0 else "white"
 
             rect = Rectangle(
-                (seg_left, bar_y_frac), 
+                (seg_left, STATE_SCALEBAR_Y),
                 seg_frac,
-                bar_height_frac,
-                facecolor=color, edgecolor="black",
-                transform=ax.transAxes, zorder=12
+                STATE_SCALEBAR_HEIGHT,
+                facecolor=color,
+                edgecolor="black",
+                transform=ax.transAxes,
+                zorder=12,
             )
             ax.add_patch(rect)
 
 
-        # ---------- LABELS ----------
+        # ---------- SCALE BAR LABELS ----------
         for km in marks_km:
-            x_frac = left_frac + (km / total_km) * SCALEBAR_WIDTH_FRAC
-            ax.text(x_frac,
-                    bar_y_frac + bar_height_frac * 1.6,
-                    f"{int(km)}",
-                    fontsize=7, ha="center",
-                    transform=ax.transAxes, zorder=13)
+            x_frac = STATE_SCALEBAR_LEFT + (km / total_km) * STATE_SCALEBAR_WIDTH
 
-        # unit label
-        ax.text(left_frac + SCALEBAR_WIDTH_FRAC + 0.015,
-                bar_y_frac + bar_height_frac * 0.6,
-                "Km", fontsize=8,
-                transform=ax.transAxes, zorder=13)
+            ax.text(
+                x_frac,
+                STATE_SCALEBAR_Y + STATE_SCALEBAR_HEIGHT * 1.6,
+                f"{int(km)}",
+                fontsize=7,
+                ha="center",
+                transform=ax.transAxes,
+                zorder=13,
+            )
+
+        ax.text(
+            STATE_SCALEBAR_LEFT + STATE_SCALEBAR_WIDTH + 0.015,
+            STATE_SCALEBAR_Y + STATE_SCALEBAR_HEIGHT * 0.6,
+            STATE_SCALEBAR_UNIT,
+            fontsize=8,
+            transform=ax.transAxes,
+            zorder=13,
+        )
 
 
         # Source
-        ax.text(0.99, 0.01, "Source: MODIS",
-                fontsize=7, style='italic',
-                transform=ax.transAxes, ha="right")
+        source_x, source_y = STATE_SOURCE_POSITION
+
+        ax.text(
+            source_x,
+            source_y,
+            f"Source: {MAP_SOURCE}",
+            fontsize=7,
+            style="italic",
+            transform=ax.transAxes,
+            ha="right",
+        )
         
 
         # LEGEND
         patches = [mpatches.Patch(facecolor=c, edgecolor='black', label=l)
                 for _,_,l,c in NDVI_CLASSES]
 
-        LEGEND_POS = {
-            "Uttar Pradesh":     (0.65, 0.67),
-            "Rajasthan":         (0.005, 0.06),
-            "Madhya Pradesh":    (0.65, 0.03),
-            "Chhattisgarh":      (0.65, 0.03),
-            "Odisha":            (0.65, 0.04),
-            "Maharashtra":       (0.65, 0.03),
-            "Karnataka":         (0.005, 0.06),
-            "Tamil Nadu":        (0.005, 0.06),
-            "Andhra Pradesh":    (0.65, 0.03),
-            "Haryana":           (0.005, 0.06)
-            }
-
-
         # legend placement based ONLY on state shape
-        legend_x, legend_y = LEGEND_POS.get(stname, (0.65, 0.04))
+        legend_x, legend_y = STATE_LEGEND_POSITION.get(stname, (0.65, 0.04))
 
-        leg = ax.legend(
+        ax.legend(
             handles=patches,
             loc="lower left",
             bbox_to_anchor=(legend_x, legend_y),
@@ -1483,9 +1306,12 @@ def main():
         )
 
         ax.text(
-            legend_x + 0.01 , legend_y + 0.165,
-            "Legend", fontsize=10, weight="bold",
-            transform=ax.transAxes
+            legend_x + 0.01,
+            legend_y + 0.165,
+            LEGEND_TITLE,
+            fontsize=10,
+            weight="bold",
+            transform=ax.transAxes,
         )
 
 
@@ -1495,17 +1321,21 @@ def main():
         plt.savefig(fname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close(fig)
 
-        crop_white_margins_all_sides(fname)
         print(f"  ✅ Saved: {fname}")
 
 
     # ---------------------- Run generation for selected states ----------------------
     os.makedirs(multi_output_dir, exist_ok=True)
-    for s in state_list:
+    for state in STATE_LIST:
         try:
-            make_state_map(s, multi_output_dir, title_text=f"Present NDVI\n({s})", dpi=dpi, figsize=(8,8.5))
-        except Exception as e:
-            print(f"Error generating {s}: {e}")
+            make_state_map(
+                state,
+                multi_output_dir,
+                dpi=FIGURE_DPI,
+                figsize=FIGURE_SIZE,
+            )
+        except Exception as error:
+            print(f"Error generating {state}: {error}")
 
     print("\nAll done.")
 
