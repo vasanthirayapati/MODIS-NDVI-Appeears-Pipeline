@@ -28,16 +28,9 @@ TITLE_FONT_SIZE = 16
 # ============================================================
 # MAP TITLE
 # ============================================================
-MAP_TITLE = "Present NDVI"
+MAP_TITLE = "MODIS NDVI"
 SHOW_DATE_RANGE = True
 TITLE_X_OFFSET = 8
-
-
-# ============================================================
-# STATE LABELS
-# ============================================================
-
-SHOW_STATE_LABELS = True
 
 # ============================================================
 # MAP PADDING
@@ -113,7 +106,7 @@ LEGEND_TITLE_POSITION = (0.44, 0.29)
 
 
 # ============================================================
-# STATE EXTENT ON THE FINAL MAPS 
+# # STATE MAP SETTINGS 
 # ============================================================
 
 REGION_EXTENTS  = {
@@ -196,5 +189,3 @@ STATE_LEGEND_POSITION = {
             "Andhra Pradesh":    (0.65, 0.03),
             "Haryana":           (0.005, 0.06)
             }
-
-LEGEND_TITLE = "Legend"
