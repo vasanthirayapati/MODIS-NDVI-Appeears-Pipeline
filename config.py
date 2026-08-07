@@ -13,8 +13,8 @@ load_dotenv()
 # DATE RANGE
 # ============================================================
 
-start_date = "2026-07-01"
-end_date = "2026-07-31"
+start_date =  "07-01-2026"
+end_date = "07-31-2026"
 
 # ============================================================
 # PROJECT PATHS
@@ -29,9 +29,6 @@ OUTPUT_DIR = PROJECT_DIR / "outputs"
 # INPUT DATA
 # ============================================================
 
-# Area of Interest (AOI)
-AOI_PATH = DATA_DIR / "vectors" / "India_States_2025"/ "India_States_2025.shp"
-
 # Administrative boundaries
 STATE_BOUNDARY = DATA_DIR / "vectors" / "State_Merge"/ "State_India.shp"
 DISTRICT_BOUNDARY = DATA_DIR / "vectors" / "District_Merge" / "India_Districts.shp"
@@ -39,7 +36,7 @@ DISTRICT_BOUNDARY = DATA_DIR / "vectors" / "District_Merge" / "India_Districts.s
 # Optional Agricultural Mask
 # Set to None to disable masking
 #MASK_PATH = None
-MASK_PATH = DATA_DIR / "masks" / "agriculture_mask.tif"
+MASK_PATH = DATA_DIR / "masks" / "agriculture_mask.img"
 
 
 
@@ -61,7 +58,7 @@ OUTPUT_RASTER.mkdir(parents=True, exist_ok=True)
 OUTPUT_MAPS.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
-# NASA AppEEARS
+# APPEEARS API
 # ============================================================
 
 API_URL = "https://appeears.earthdatacloud.nasa.gov/api/"
@@ -91,7 +88,7 @@ DOWNLOAD_BBOX = [
 # ============================================================
 
 PRODUCT = "MOD13Q1.061"
-LAYER = "250m_16_days_NDVI"
+LAYER = "_250m_16_days_NDVI"
 
 
 # ============================================================
