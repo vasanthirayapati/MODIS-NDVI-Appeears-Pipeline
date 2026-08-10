@@ -51,7 +51,7 @@ def get_token():
     r.raise_for_status()
     token = r.json()["token"]
 
-    print("🔐 Authentication successful")
+    print(" Authentication successful")
     return token
 
 
@@ -194,7 +194,7 @@ def submit_task(token, start_date, end_date):
     r.raise_for_status()
 
     task_id = r.json()["task_id"]
-    print(f"📤 Task submitted: {task_id}")
+    print(f"Task submitted: {task_id}")
     return task_id
 
 
@@ -209,11 +209,11 @@ def get_download_url(token, task_id):
             )
             r.raise_for_status()
         except requests.exceptions.ReadTimeout:
-            print("⚠️ AppEEARS not responding (timeout). Retrying in 90s...")
+            print("AppEEARS not responding (timeout). Retrying in 90s...")
             time.sleep(120)
             continue
         except requests.exceptions.ConnectionError:
-            print("⚠️ Connection dropped. Retrying in 90s...")
+            print("Connection dropped. Retrying in 90s...")
             time.sleep(120)
             continue
 
@@ -239,12 +239,12 @@ def get_download_url(token, task_id):
                     file_id = f["file_id"]
                     return f"{API_URL}bundle/{task_id}/{file_id}"
 
-            raise RuntimeError("NDVI file not found")
+            raise RuntimeError("NDVI data for this MODIS window has not yet been published by AppEEARS.")
 
         elif status == "error":
             raise RuntimeError("AppEEARS task failed")
 
-        print(f"⌛ Status: {status} (retry in 60s)")
+        print(f" Status: {status} (retry in 120s)")
         time.sleep(120)
 
 def ordinal(n):
@@ -325,15 +325,15 @@ def main():
         # CHECK IF TIFF EXISTS
 
         if os.path.exists(NDVI_TIF_OUTPUT):
-            print("✅ NDVI TIFF already exists. Skipping download...")
-            print("📂 Using:", NDVI_TIF_OUTPUT)
+            print(" NDVI TIFF already exists. Skipping download...")
+            print("Using:", NDVI_TIF_OUTPUT)
 
             ndvi_raster = NDVI_TIF_OUTPUT   # use local file
 
             use_local_file = True
 
         else:
-            print("⬇ NDVI TIFF not found. Downloading from AppEEARS...")
+            print(" NDVI TIFF not found. Downloading from AppEEARS...")
 
             use_local_file = False
 
@@ -343,14 +343,14 @@ def main():
     
         
 
-        print("🔗 NDVI raster URL:")
+        print(" NDVI raster URL:")
         print(ndvi_raster)
 
 
         # Show which NDVI file is used
         ndvi_filename = os.path.basename(ndvi_raster)
 
-        print("🛰️ NDVI FILE USED FOR MAP:")
+        print(" NDVI FILE USED FOR MAP:")
         print(ndvi_filename)
         print("-" * 60)
 
@@ -385,13 +385,13 @@ def main():
 
             # Read raster from a local GeoTIFF
             if Path(source).exists():
-                print("📂 Reading NDVI from local TIFF...")
+                print(" Reading NDVI from local TIFF...")
                 src = rasterio.open(source)
                 arr = src.read(1).astype("float32")
                 return src, arr, None
 
             # Download raster from the AppEEARS URL
-            print("⬇ Fetching NDVI from AppEEARS...")
+            print(" Fetching NDVI from AppEEARS...")
 
             headers = {"Authorization": f"Bearer {token}"}
 
@@ -489,7 +489,7 @@ def main():
 
 
         if not use_local_file:
-            print("💾 Saving NDVI TIFF...")
+            print(" Saving NDVI TIFF...")
 
             with rasterio.open(
                 NDVI_TIF_OUTPUT,
@@ -507,7 +507,7 @@ def main():
                 ndvi_scaled = autoscale_modis(ndvi_raw)
                 dst.write(ndvi_scaled.astype("float32"), 1)
 
-            print("✅ NDVI TIFF saved:", NDVI_TIF_OUTPUT)
+            print(" NDVI TIFF saved:", NDVI_TIF_OUTPUT)
 
         if MASK_PATH is not None:
             print("Reading AgriMask raster...")
@@ -544,9 +544,6 @@ def main():
             ndvi_masked = np.where(mask_bin == 1, ndvi, np.nan)
         else:
             ndvi_masked = ndvi.copy()
-
-        # Mask non-agricultural pixels
-        ndvi_masked = np.where(mask_bin == 1, ndvi, np.nan)
 
         # Removed noise (NDVI < 0.05 irrelevant in my maps)
         # Filter NDVI values outside the configured range
@@ -830,7 +827,7 @@ def main():
         plt.savefig(output_path, dpi=FIGURE_DPI, bbox_inches='tight', pad_inches=0.1)
         plt.close()
 
-        print(f"  ✅ NDVI MAP SAVED: {output_path}")
+        print(f" NDVI MAP SAVED: {output_path}")
 
 
         # ============================================================
@@ -931,7 +928,7 @@ def main():
             if st_row.empty:
                 st_row = states[states['stname_lab'].str.contains(stname.split()[0], case=False, na=False)]
                 if st_row.empty:
-                    print(f"  ⚠️ STATE NOT FOUND: {stname}")
+                    print(f"   STATE NOT FOUND: {stname}")
                     return
 
             geom = mapping(st_row.iloc[0].geometry)
@@ -1287,7 +1284,7 @@ def main():
             plt.savefig(fname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close(fig)
 
-            print(f"  ✅ Saved: {fname}")
+            print(f" Saved: {fname}")
 
 
         # ---------------------- Run generation for selected states ----------------------
@@ -1303,9 +1300,16 @@ def main():
             except Exception as error:
                 print(f"Error generating {state}: {error}")
 
+
+    # Close datasets after ALL state maps are finished
+    ndvi_src.close()
+
+    if MASK_PATH is not None:
+        mask_src.close()
+
+
     print("\nAll done.")
 
-    ndvi_src.close()
     if tmp_path:
         os.remove(tmp_path)
 
