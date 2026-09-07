@@ -239,3 +239,4 @@ DISTRICT_LABEL_SHIFT = {
     "Kolhapur":(-0.2,0),
     "Bhandara": (0,-0.1),
 }
+
