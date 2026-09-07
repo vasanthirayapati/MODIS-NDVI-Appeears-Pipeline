@@ -1,4 +1,4 @@
-#automatically download modis data from appeears website in the given timeline... downloads all the available data in the time period and generate maps
+#automatically download modis data from appeears website in the given timeline... downloads all the available data in the time period and generate maps for them.
 import os
 import time
 import math
