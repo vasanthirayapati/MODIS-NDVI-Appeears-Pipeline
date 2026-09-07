@@ -52,54 +52,39 @@ GRID_INTERVAL = 5
 GRID_LABEL_SIZE = 9
 
 
-# ============================================================
+
 # NORTH ARROW
-# ============================================================
 
 SHOW_NORTH_ARROW = True
-
 NORTH_ARROW_POSITION = (0.05, 0.92)
 
-# ============================================================
+
 # SCALE BAR
-# ============================================================
 
 SHOW_SCALE_BAR = True
-
 SCALE_BAR_BASE_LAT = 5.5
-
 SCALE_BAR_CENTER_LON = 82
-
 SCALE_BAR_MARKS = [0, 130, 260, 520, 780, 1040]
 
 
-# ============================================================
+
 # SOURCE
-# ============================================================
 
 SHOW_SOURCE = True
-
 SOURCE_TEXT = "Source: MODIS"
-
 SOURCE_POSITION = (97.6, -0.2)   # (x, y offset from scale bar)
 
 
-# ============================================================
 # LEGEND
-# ============================================================
 
 SHOW_LEGEND = True
-
 LEGEND_TITLE = "Legend"
-
 LEGEND_POSITION = (0.435, 0.12)
-
 LEGEND_TITLE_POSITION = (0.44, 0.29)
 
 
-# ============================================================
-# # STATE MAP SETTINGS 
-# ============================================================
+
+#  STATE MAP SETTINGS 
 
 REGION_EXTENTS  = {
         "Andhra Pradesh": [74, 87.5, 12, 20.7],
@@ -127,16 +112,14 @@ STATE_TITLE_POSITION = {
     "Tamil Nadu":      (0.35, 0.965),
 }
 
-# ============================================================
+
 # STATE NORTH ARROW POSITION
-# ============================================================
+
 STATE_NORTH_ARROW_POSITION = (0.96, 0.92)
 
 
 
-# ============================================================
 # SCALE BAR MAX KM SEEN FOR STATE
-# ============================================================
 STATE_SCALEBAR_MAXKM = {
             "Rajasthan": 300,
             "Madhya Pradesh": 300,
@@ -150,9 +133,9 @@ STATE_SCALEBAR_MAXKM = {
             "Tamil Nadu": 160
         }
 
-# ============================================================
+
 # SCALE BAR STYLING
-# ============================================================
+
 STATE_SCALEBAR_Y = 0.01
 STATE_SCALEBAR_HEIGHT = 0.008
 STATE_SCALEBAR_WIDTH = 0.28
@@ -160,9 +143,9 @@ STATE_SCALEBAR_LEFT = 0.30
 STATE_SCALEBAR_UNIT = "Km"
 
 
-# ============================================================
+
 # SOURCE
-# ============================================================
+
 MAP_SOURCE = "MODIS"
 STATE_SOURCE_POSITION = (0.99, 0.01)
 
