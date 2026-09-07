@@ -149,9 +149,9 @@ STATE_SCALEBAR_UNIT = "Km"
 MAP_SOURCE = "MODIS"
 STATE_SOURCE_POSITION = (0.99, 0.01)
 
-# ============================================================
+
 # LEGEND POSITIONS
-# ============================================================
+
 STATE_LEGEND_POSITION = {
             "Uttar Pradesh":     (0.65, 0.67),
             "Rajasthan":         (0.005, 0.06),
