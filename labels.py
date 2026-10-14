@@ -75,6 +75,18 @@ DISTRICT_LABEL_WRAP = {
 
     #Maharashtra 
     "Mumbai Suburban": "Mumbai\nSuburban",
+
+    #West Bengal
+    "Dinajpur Dakshin": "Dinajpur\nDakshin",
+    "Medinipur West": "Medinipur\nWest",
+    "Paschim Bardhaman": "Paschim\nBardhaman",
+    "Purba Bardhaman" : " Purba\nBardhaman",
+    "South Twenty Four Pargan*" : "South\nTwent\nFour\nPargan*",
+    "Purba Medinipur": "Purba\nMedinipur",
+    "Uttar Dinajpur": "Uttar\nDinajpur",
+    "Cooch Behar": "Cooch\nBehar",
+    "24 Paraganas North": "24\nParaganas\nNorth",
+    "24 Paraganas South":"24 Paraganas\nSouth",
 }
 
 DISTRICT_LABEL_SHIFT = {
