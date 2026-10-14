@@ -260,12 +260,12 @@ DISTRICT_LABEL_SHIFT = {
     "Birbhum" : (-0.05,-0.17),
     "Murshidabad" : (-0.1,-0.1),
     "Nadia" :(-0.07,0),
-    "Dakshin Dinajpur":(-0.05,-0.04),
+    "Dinajpur Dakshin":(0.03,-0.04),
     "Alipurduar":(0.0,0),
     "Cooch Behar": (-0.04,0),
     "Darjiling" :(0.17,0),
     "Kalimpong": (0,0.03),
-    "Jhargram":(0,-0.15),
+    "Jhargram":(0,-0.1),
     "24 Paraganas North":(0,0.09),
 }
 
