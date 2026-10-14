@@ -227,6 +227,7 @@ DISTRICT_LABEL_SHIFT = {
     "Kendrapara":(-0.1,0),
     "Jajapur":(-0.04,0),
     "Balangir":(0,0.05),
+    
 
     #Maharashtra
     "Gondiya":(-0.1,0.1),
