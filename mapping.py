@@ -6,6 +6,7 @@ MAX_NDVI = 1.00
 
 # NDVI CLASSIFICATION
 
+
 NDVI_CLASSES = [
     (0.05, 0.20, "0.05–0.20 (Extreme Deficit)", "#FF0000"),
     (0.21, 0.40, "0.21–0.40 (Moderate Deficit)", "#FF8C00"),
