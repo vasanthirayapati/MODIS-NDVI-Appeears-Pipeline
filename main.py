@@ -16,7 +16,6 @@ import geopandas as gpd
 import cartopy.crs as ccrs
 import cartopy.mpl.ticker as cticker
 
-
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.font_manager as fm
