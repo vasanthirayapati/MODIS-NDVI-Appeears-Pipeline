@@ -10,6 +10,7 @@ STATE_LABEL_WRAP = {
     "West Bengal": "West\nBengal"
 }
 
+
 # Manual offsets for fine adjustment (lon, lat)
 STATE_LABEL_OFFSETS = {
     "Kerala": (0.6, -0.5),
