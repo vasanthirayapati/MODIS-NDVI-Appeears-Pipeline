@@ -25,6 +25,10 @@ STATE_LABEL_OFFSETS = {
     "West Bengal": (-0.3,-0.8),
     "Assam":(-1,0),
     "Nagaland": (0,-0.2),
+
+
+
+    
     "Punjab": (-0.6,-0.6),
     "Haryana": (0,0.1),
     "Nagaland": (0, 0),
